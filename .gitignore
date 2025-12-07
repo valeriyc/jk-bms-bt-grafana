@@ -1,0 +1,5 @@
+venv/
+*.log
+volumes/
+docker-compose.override.yml
+.env

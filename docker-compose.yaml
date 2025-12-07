@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+
+  mppsolar:
+    build:
+      context: ./mppsolar
+      dockerfile: Dockerfile
+    container_name: mppsolar
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    environment:
+      - MQTT_HOST=localhost
+      - MQTT_PORT=1883
+    devices:
+      - /dev/hci0:/dev/hci0
+      - /dev/rfkill:/dev/rfkill
+    volumes:
+      - ./mppsolar:/etc/mpp-solar:ro
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+      - /var/run/dbus:/var/run/dbus
+      - /var/run/bluetooth:/var/run/bluetooth
+    entrypoint: ["jkbms"]
+    command:
+      [
+        "-C", "/etc/mpp-solar/jkbms.conf",
+        "--daemon",
+        "--mqtttopic", "JKBMS1"
+      ]
+    depends_on:
+      - mosquitto
+
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mosquitto
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+  # Telegraf (Data collection agent)
+  telegraf:
+    image: telegraf:latest
+    container_name: telegraf
+    network_mode: host
+    volumes:
+      # Mount Telegraf configuration file
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    environment:
+      # Reference InfluxDB environment variables for connection
+      INFLUX_TOKEN: xxxxxxxxxxxxxxxyyyyyyyyyyyyyyyyyyyyyyyyzzzzzzzzzzzzzzzzzzzz==
+      MQTT_BROKER_HOST: localhost
+      MQTT_BROKER_PORT: 1883
+    depends_on:
+      - mosquitto
+      - influxdb
+    restart: unless-stopped
+
+  influxdb:
+    container_name: influxdb
+    network_mode: host
+    image: influxdb:2
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword
+      DOCKER_INFLUXDB_INIT_ORG: myorg
+      DOCKER_INFLUXDB_INIT_BUCKET: batteries
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: xxxxxxxxxxxxxxxyyyyyyyyyyyyyyyyyyyyyyyyzzzzzzzzzzzzzzzzzzzz==
+      # --- Enable InfluxQL compatibility API ---
+      INFLUXDB_HTTP_INFLUXQL_ENABLED: "true"
+      INFLUXDB_HTTP_FLUX_ENABLED: "true"
+    volumes:
+      - ./volumes/influxdb:/var/lib/influxdb2
+
+  grafana:
+    image: grafana/grafana
+    network_mode: host
+    restart: unless-stopped
+    user: "${UID}:${GID}"
+    depends_on:
+      - influxdb
+    ports:
+      - 3000:3000
+    environment:
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+    volumes:
+      - ./volumes/grafana:/var/lib/grafana
+
+volumes:
+  mosquitto_config:
+  mosquitto_data:
+  mosquitto_log:
+  influxdb_data:
+  grafana_data:
+
