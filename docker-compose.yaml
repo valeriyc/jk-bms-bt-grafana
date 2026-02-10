@@ -7,7 +7,6 @@ services:
       context: ./mppsolar
       dockerfile: Dockerfile
     container_name: mppsolar
-    restart: unless-stopped
     network_mode: host
     privileged: true
     environment:
@@ -30,16 +29,24 @@ services:
       ]
     depends_on:
       - mosquitto
+    #restart every 5 minutes by making it unhealthy
+    healthcheck:
+      test: ["CMD-SHELL", "test $(($(date +%s) % 300)) -ne 0"]
+      interval: 30s
+      retries: 1
+    restart: always
 
   mosquitto:
     image: eclipse-mosquitto
     container_name: mosquitto
-    restart: unless-stopped
     network_mode: host
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
+    restart: always
+    healthcheck:
+      disable: false
 
   # Telegraf (Data collection agent)
   telegraf:
@@ -57,13 +64,14 @@ services:
     depends_on:
       - mosquitto
       - influxdb
-    restart: unless-stopped
+    restart: always
+    healthcheck:
+      disable: false
 
   influxdb:
     container_name: influxdb
     network_mode: host
     image: influxdb:2
-    restart: unless-stopped
     ports:
       - "8086:8086"
     environment:
@@ -78,11 +86,13 @@ services:
       INFLUXDB_HTTP_FLUX_ENABLED: "true"
     volumes:
       - ./volumes/influxdb:/var/lib/influxdb2
+    restart: always
+    healthcheck:
+      disable: false
 
   grafana:
     image: grafana/grafana
     network_mode: host
-    restart: unless-stopped
     user: "${UID}:${GID}"
     depends_on:
       - influxdb
@@ -93,6 +103,9 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: "admin"
     volumes:
       - ./volumes/grafana:/var/lib/grafana
+    restart: always
+    healthcheck:
+      disable: false
 
 volumes:
   mosquitto_config:
